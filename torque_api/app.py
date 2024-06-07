@@ -1,7 +1,6 @@
 import subprocess
-import asyncio
-import psutil
-import pandas as pd
+import json
+# import asyncio
 
 
 class JobScheduler:
@@ -85,7 +84,12 @@ class JobScheduler:
         for job_id in job_ids:
             self.change_job_priority(job_id, priority)
 
-    async def is_job_running(self, job_id):
+    def read_job_ids(file_path):
+        with open(file_path, 'r') as file:
+            job_ids = json.load(file)
+        return job_ids
+
+    def is_job_running(self, job_id):
         try:
             result = (subprocess.run(['qstat', job_id], check=True,
                                      capture_output=True, text=True))
@@ -98,20 +102,52 @@ class JobScheduler:
         except subprocess.CalledProcessError as e:
             return print(e.stderr)
 
-    async def monitor_jobs(self):
-        while self.running_jobs:
-            not_completed_jobs = []
-            jobs_to_remove = []
-            for job_id, function_name in self.running_jobs.items():
-                if await self.is_job_running(job_id):
-                    not_completed_jobs.append(job_id)
+    def monitor_jobs(self, file_path):
+        try:
+            job_ids = self.read_job_ids(file_path)
+            for job_id, function_name in job_id.items():
+                status = self.is_job_running(job_id)
+                if status:
+                    print(f"Job {job_id} ({function_name}) is completed.")
                 else:
-                    print(f"Job ID: {job_id} ({function_name}) has completed.")
-                    jobs_to_remove.append(job_id)
-            for job_id in jobs_to_remove:
-                del self.running_jobs[job_id]
-            print(f"Jobs still running: {self.running_jobs}")
-            await asyncio.sleep(10)
+                    print(f"Job {job_id} ({function_name}) is still running")
+        except subprocess.CalledProcessError as e:
+            return print(e.stderr)
+
+    """
+    FUNCTIONS ARCHIVE
+
+    Currently not in use as we do not need this function
+    But if needed, can always be used and maintained
+    """
+
+    # async def is_job_running(self, job_id):
+    #     try:
+    #         result = (subprocess.run(['qstat', job_id], check=True,
+    #                                  capture_output=True, text=True))
+    #         output_lines = result.stdout.split('\n')
+    #         data = [line.split() for line in output_lines]
+    #         if data[2][4] == "R":
+    #             return True
+    #         else:
+    #             return False
+    #     except subprocess.CalledProcessError as e:
+    #         return print(e.stderr)
+
+    # async def constant_monitor_jobs(self):
+    #     while self.running_jobs:
+    #         not_completed_jobs = []
+    #         jobs_to_remove = []
+    #         for job_id, function_name in self.running_jobs.items():
+    #             if await self.is_job_running(job_id):
+    #                 not_completed_jobs.append(job_id)
+    #             else:
+    #                 print(f"Job ID: {job_id} ({function_name}) has completed.")
+    #                 jobs_to_remove.append(job_id)
+    #         for job_id in jobs_to_remove:
+    #             del self.running_jobs[job_id]
+    #         print(f"Jobs still running: {self.running_jobs}")
+    #         await asyncio.sleep(10)
 
 
 # scheduler = JobScheduler()
