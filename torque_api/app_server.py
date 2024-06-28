@@ -11,7 +11,9 @@ app = Flask(__name__)
 # port: 3306
 # name of the db: flask_db
 
-# code to create the flask_db
+
+# code to create the flask_db MySQL
+
 '''
     -> CREATE DATABASE flask_db
     -> USE flask_db
