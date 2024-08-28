@@ -1,6 +1,7 @@
 import subprocess
 import json
 import asyncio
+import aiohttp
 from flask import Flask, request, jsonify, Response
 
 app = Flask(__name__)
@@ -8,6 +9,8 @@ app = Flask(__name__)
 class JobScheduler:
     def __init__(self):
         self.running_jobs = {}
+        # this is to contain the link to take in the post request from jiayang's code
+        self.update_url
 
     def submit_job(self, job_script_file, function_name="submit_job"):
         try:
@@ -132,32 +135,59 @@ class JobScheduler:
 
 
     async def is_job_running(self, job_id):
+        # boolean to check which job is still running
         try:
-            result = (subprocess.run(['qstat', job_id], check=True,
-                                     capture_output=True, text=True))
+            result = subprocess.run(['qstat', job_id], check=True, capture_output=True, text=True)
             output_lines = result.stdout.split('\n')
-            data = [line.split() for line in output_lines]
-            if data[2][4] == "R":
+            data = [line.split() for line in output_lines if line]
+            if data and data[2][4] == "R":
                 return True
             else:
                 return False
         except subprocess.CalledProcessError as e:
-            return print(e.stderr)
+            print(e.stderr)
+            return False
 
     async def constant_monitor_jobs(self):
-        while self.running_jobs:
-            not_completed_jobs = []
-            jobs_to_remove = []
-            for job_id, function_name in self.running_jobs.items():
-                if await self.is_job_running(job_id):
-                    not_completed_jobs.append(job_id)
-                else:
-                    print(f"Job ID: {job_id} ({function_name}) has completed.")
-                    jobs_to_remove.append(job_id)
-            for job_id in jobs_to_remove:
-                del self.running_jobs[job_id]
-            print(f"Jobs still running: {self.running_jobs}")
-            await asyncio.sleep(180)
+        async with aiohttp.ClientSession() as session:
+            while self.running_jobs:
+                not_completed_jobs = []
+                jobs_to_remove = []
+                for job_id, function_name in self.running_jobs.items():
+                    if await self.is_job_running(job_id):
+                        not_completed_jobs.append(job_id)
+                    else:
+                        print(f"Job ID: {job_id} ({function_name}) has completed.")
+                        jobs_to_remove.append(job_id)
+                        # prepare JSON payload for the completed job
+                        payload = {
+                            "task_path": function_name,  # not sure how would it work
+                            "new_job_status": "complete"
+                        }
+                        # sending the post request to Jiayang's API
+                        async with session.post(self.update_url, json=payload) as response:
+                            if response.status == 200:
+                                print(f"Task status for Job ID: {job_id} updated successfully.")
+                            else:
+                                print(f"Failed to update task status for Job ID: {job_id}")
+
+                for job_id in jobs_to_remove:
+                    del self.running_jobs[job_id]
+                
+                # Send an update for the jobs still running
+                status = {
+                    "task_path": "path_to_the_task",
+                    "new_job_status": "in queue" if not_completed_jobs else "complete"
+                }
+                async with session.post(self.update_url, json=status) as response:
+                    if response.status == 200:
+                        print("Running job status updated successfully.")
+                    else:
+                        print("Failed to update running job status.")
+
+                print(f"Jobs still running: {self.running_jobs}")
+                await asyncio.sleep(180)
+        
 
 scheduler = JobScheduler()
 
